@@ -1,0 +1,375 @@
+---
+title: "Figures Generated for Nature Methods Comment Manuscript"
+author: "Merilyn Albuquerque"
+date: "2025-12-12"
+output: html_document
+---
+
+
+
+### Import and tidy data
+
+
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_knit$set(root.dir = here::here())
+
+#Install packages
+package_list <- c("tidyr", "dplyr", "readxl", "ggplot2", "stringr", "janitor", "ggrepel", "RColorBrewer", "forcats", "likert", "here")
+lapply(package_list, library, character.only = TRUE)
+rm(package_list)
+
+#Import dataset
+df <- readxl::read_excel(here("data", "Global Survey of Practices, Challenges, and Future Directions in Single-Cell Data Analysis(1-76).xlsx"))
+
+#Data tidy
+df <- df %>% clean_names(case = "snake") #clean column headings
+df <- df %>% mutate(what_is_your_career_stage_job_title = str_to_title(what_is_your_career_stage_job_title)) #standardise character cases
+df <- df %>% mutate(what_research_field_do_you_primarily_work_in = str_to_title(what_research_field_do_you_primarily_work_in)) #standardise character cases
+
+#Aggregate similar values for consistency 
+
+
+#Amend specific characters from Spanish to English
+df$which_sector_do_you_work_in <- gsub("Académico", "Academic", df$which_sector_do_you_work_in)
+df$what_is_your_primary_role <- gsub("Híbrido", "Hybrid", df$what_is_your_primary_role)
+df$typical_dataset_size <- gsub("10-100k células", " 10-100k cells", df$typical_dataset_size)
+
+
+```
+
+
+
+### What career stage are respondents in?
+
+
+``` {r Q4}
+
+#Data tidy (group participants into five main subgroups for career stage)
+df_job_title_summarised <- data.frame(Career_stage = c("Senior Faculty & Group Leaders", "Scientists & Postdocs", "Core & Technical Staff", "Clinical Scientist", "Student"),
+                                      n = c(19, 17, 5, 1, 27))
+df_job_title_summarised$Career_stage <- factor(df_job_title_summarised$Career_stage, levels = rev(df_job_title_summarised$Career_stage))
+
+#Add counts, percentages and labels
+df_job_title_summarised <- df_job_title_summarised %>% 
+  mutate(pct = (n/sum(n))*100) %>%  
+  mutate(csum = rev(cumsum(rev(pct))), 
+         pos = pct/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), pct/2, pos)) 
+
+#Plot pie chart
+career <- ggplot(df_job_title_summarised, aes("", pct, fill=rev(Career_stage))) +
+  geom_col(width=1, color = 1) +
+  geom_label_repel(aes(y = pos, label = paste0(Career_stage, ": ", round(pct, 1), "%")),
+                   size = 4, nudge_x = 0.7, show.legend = FALSE) +
+  coord_polar("y") +
+  theme_void(base_size = 12) +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5, vjust = -10)) +
+  ggtitle("Career Stage")
+
+career
+
+#ggsave("figures/Career Stage.png", plot = career, width = 4.3, height = 4.3)
+
+```
+
+### What sectors do responders come from?
+
+``` {r Q5}
+
+#Data tidy + add counts, percentages and labels
+df_sector <- df %>% 
+  count(which_sector_do_you_work_in) %>%
+  mutate(pct = (n/sum(n)) *100) %>% 
+  mutate(csum = rev(cumsum(rev(pct))), 
+         pos = pct/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), pct/2, pos)) 
+
+#Plot pie chart
+sector <- ggplot(df_sector, aes("", pct, fill=which_sector_do_you_work_in)) +
+  geom_col(width=1, color = 1) +
+  geom_label_repel(df_sector, mapping = aes(y = pos, label = paste0(which_sector_do_you_work_in, ": ", round(pct, 1), "%")),
+                   size = 4, nudge_x = 0.7, show.legend = FALSE) +
+  coord_polar("y") + 
+  theme_void(base_size = 12) +
+  scale_fill_brewer(palette = "Pastel1", direction = -1) +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5, vjust = 1.5)) +
+  ggtitle("Sector")
+  
+sector
+
+#ggsave("figures/Sector.png", plot = sector, width = 4.3, height = 4.3)
+
+```
+
+
+### What roles do responders have?
+
+
+``` {r Q7}
+
+#Data tidy + add counts, percentages and labels
+df_role <- df %>% count(what_is_your_primary_role) %>% 
+  filter(what_is_your_primary_role %in% c("Computational", "Hybrid", "Experimental", "Core")) %>%
+  mutate(pct = (n/sum(n)) *100) %>%
+  mutate(csum = rev(cumsum(rev(pct))), 
+         pos = pct/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), pct/2, pos)) 
+
+#Plot pie chart
+role <- ggplot(df_role, aes("", pct, fill=what_is_your_primary_role)) +
+  geom_col(width=1, color = 1) +
+  geom_label_repel(aes(y = pos, label = paste0(what_is_your_primary_role, ": ", round(pct, 1), "%")),
+                   size = 4, nudge_x = 0.7, show.legend = FALSE) +
+  coord_polar("y") +
+  theme_void(base_size = 12) +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5, vjust = -10)) +
+  ggtitle("Primary Role")
+
+role
+
+#ggsave("figures/Primary Role.png", plot = role, width = 4.3, height = 4.3)
+
+```
+
+
+### How confident are respondents to each single-cell analytical step?
+
+``` {r Q15}
+
+#Data tidy
+df_q15 <- df[,c(21:28)]
+df_q15 <- na.omit(df_q15)
+df_q15 <- as.data.frame(df_q15)
+df_q15_clean <- df_q15 %>% mutate(across(everything(), ~ str_squish(str_trim(.x)))) #remove empty spaces as following code doesn't recognise some values!
+
+#Convert to factors
+groups <- c("Not confident", "Slightly confident", "Moderately confident", "Confident", "Very confident")
+df_q15_clean <- df_q15_clean %>% mutate(across(everything(),
+                                               ~ factor(.x, levels = groups, ordered = TRUE)))
+names(df_q15_clean) <- c("Data pre-processing & quality control", "Normalisation & clustering", "Cell annotation", 
+                         "Differential expression analysis", "Trajectory/pseudotime analysis", "Multi-omic integration",
+                         "Spatial analysis", "Data visualisation")
+
+#Create likert object
+lk_q15 <- likert(df_q15_clean)
+
+#Plot likert graph
+png("Confidence Steps Likert.png", width = 2800, height = 1200, res = 300)
+plot(lk_q15) +
+  scale_fill_brewer(palette = "RdYlGn") +
+  guides(fill = guide_legend("")) +
+  theme_classic() +
+  ggtitle("Confidence in Single-Cell Analytical Steps") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "top")
+dev.off()
+
+```
+
+
+### Which factors influence single-cell tool choice?
+
+``` {r Q17}
+
+#Data tidy
+df_tool_choice <- df %>% 
+  select(when_deciding_which_tool_to_use_for_single_cell_analysis_what_factors_influence_your_tool_choice) %>%
+  as.data.frame() %>% 
+  separate_rows(when_deciding_which_tool_to_use_for_single_cell_analysis_what_factors_influence_your_tool_choice, sep = ";")
+colnames(df_tool_choice) <- "Factors"
+df_tool_choice <- df_tool_choice %>% mutate(Factors = case_when(
+  Factors %in% "Tutorials/Workshops/Courses" ~ "Tutorials/Workshops/Courses/Vignettes",
+  Factors %in% "provider (BD Biosciences) recommendation" ~ "Other: Supplier recommendation",
+  Factors %in% "Applicability to the tissue type I am working with" ~ "Other: Suitable to my tissue type",
+  TRUE ~ Factors))
+df_tool_choice[df_tool_choice == ''] <- NA
+df_tool_choice <- na.omit(df_tool_choice)
+
+#Add counts and percentages
+df_tool_choice <- df_tool_choice %>% count(Factors)
+df_tool_choice <- df_tool_choice %>% mutate(pct = (n/nrow(df) * 100))
+
+#Plot bar chart
+tool_choice <- ggplot(df_tool_choice, aes(reorder(Factors, pct), pct)) +
+  geom_bar(stat = 'identity', fill = "#00A087FF") +
+  coord_flip() +
+  geom_text(aes(label = paste0(round(pct, 1), "%")), hjust = -0.1, size = 3.5) +
+  labs(x=NULL, y=NULL, title = "Factors Influencing Tool Selection") +
+  theme_classic(base_size = 12) +
+  theme(axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.line.x = element_blank(),
+        plot.title=element_text(hjust=0.5, size = 12)) +
+    scale_y_continuous(limits=c(0,70))
+
+tool_choice
+
+#ggsave("figures/Tool Choice.png", plot = tool_choice, width = 6, height = 4)
+
+
+```
+
+
+### What challenges do respondents face during single-cell analysis?
+
+```{r Q18}
+
+#Data tidy
+df_q18 <- df[,c(31:35)]
+df_q18 <- na.omit(df_q18)
+df_q18 <- as.data.frame(df_q18)
+df_q18_clean <- df_q18 %>% mutate(across(everything(), ~ str_squish(str_trim(.x)))) #remove empty spaces in character strings
+
+#Convert to factors with specified levels
+groups <- c("Not challenging", "Slightly challenging", "Moderately challenging", "Challenging", "Very challenging")
+df_q18_clean <- df_q18_clean %>% mutate(across(everything(),
+                                               ~ factor(.x, levels = groups, ordered = TRUE)))
+names(df_q18_clean) <- c("Finding appropriate tools", "Ensuring reproducibility of results", "Conflicting outputs from different tools", 
+                         "Integrating data from multiplex modalities", "Scaling to larger datasets")
+
+#Create likert object
+lk_q18 <- likert(df_q18_clean)
+
+#Plot Likert graph 
+png("Challenging Steps Likert.png", width = 2800, height = 1200, res = 300)
+plot(lk_q18) +
+  scale_fill_brewer(palette = "RdYlBu", direction = -1) +
+  guides(fill = guide_legend("")) +
+  theme_classic() +
+  ggtitle("Challenging Steps in Single-Cell Analysis") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "top")
+dev.off()
+
+```
+
+
+### Has disagreement with tools changed their biological conclusion?
+
+```{r Q19}
+                                                                                                  
+#Data tidy
+df_tool_disagreements <- df %>% 
+  select(has_disagreement_between_analytical_tools_ever_changed_your_biological_conclusions) %>%
+  as.data.frame() %>%
+  na.omit() 
+colnames(df_tool_disagreements) <- "Disagreement"
+df_tool_disagreements <- df_tool_disagreements %>% mutate(across(everything(), ~ str_squish(str_trim(.x)))) #remove empty spaces in character strings
+df_tool_disagreements$Disagreement <- gsub("Não tenho a certeza?", "Not sure", df_tool_disagreements$Disagreement)
+df_tool_disagreements <- df_tool_disagreements %>% mutate(Disagreement = str_replace(Disagreement, "Not sure\\?", "Not sure"))
+df_tool_disagreements$Disagreement <- as.factor(df_tool_disagreements$Disagreement)
+
+#Add counts, percentages and labels
+df_tool_disagreements <- df_tool_disagreements %>% 
+  count(Disagreement) %>% 
+  mutate(pct = (n/sum(n))*100) %>%
+  mutate(csum = rev(cumsum(rev(pct))), 
+                              pos = n/2 + lead(csum, 1),
+                              pos = if_else(is.na(pos), n/2, pos)) 
+
+#Plot stacked bar chart
+tool_disagreement <- ggplot(df_tool_disagreements, aes("", pct, fill = Disagreement)) +
+  geom_bar(position = 'stack', stat = 'identity', width = 0.4) +
+  coord_flip() +
+  geom_label_repel(aes(y = pos, label = paste0(Disagreement, ": ", round(pct, 1), "%")),
+                   size = 4.5, nudge_x = c(-0.3, 0.3, -0.3, 0.3), show.legend = FALSE, colour = c("white", "black", "black", "white"), segment.color = "black") +
+  theme_void(base_size = 12) +
+  scale_fill_brewer(palette = "RdYlGn") +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5, vjust = -10)) +
+  labs(title = "60% respondents reported that tool disagreements \n altered their biological conclusions") 
+
+tool_disagreement
+
+#ggsave("figures/Tool Disagreement.png", plot = tool_disagreement, width = 5, height = 4)
+
+```
+
+
+### Which factors influence trust in using particular tools?
+
+``` {r Q21}
+
+#Data tidy
+df_tool_trust <- df %>% 
+  select(what_would_most_increase_your_trust_in_using_a_particular_tool) %>%
+  as.data.frame() %>% 
+  separate_rows(what_would_most_increase_your_trust_in_using_a_particular_tool, sep = ";")
+colnames(df_tool_trust) <- "Trust Factors"
+df_tool_trust <- df_tool_trust %>% mutate(across(everything(), ~ str_squish(str_trim(.x)))) #remove empty spaces in character strings
+df_tool_trust <- df_tool_trust %>% mutate(`Trust Factors` = case_when(
+  `Trust Factors` %in% "Use in tutorials/workshops/courses" ~ "Use in tutorials/workshops/courses/vignettes",
+  `Trust Factors` %in% "Interoperabilidade" ~ "Interoperability",
+  `Trust Factors` %in% "Use in the context of breast cancer" ~ "Other: Use in the context of my tissue type",
+  TRUE ~ `Trust Factors`))
+df_tool_trust[df_tool_trust == ''] <- NA
+df_tool_trust <- na.omit(df_tool_trust)
+
+#Add counts and percentages
+df_tool_trust <- df_tool_trust %>% count(`Trust Factors`)
+df_tool_trust <- df_tool_trust %>% mutate(pct = (n/nrow(df) *100))
+
+#Plot bar chart
+tool_trust <- ggplot(df_tool_trust, aes(reorder(`Trust Factors`, pct), pct)) +
+  geom_bar(stat = 'identity', fill = "#4DBBD5FF") +
+  coord_flip() +
+  geom_text(aes(label = paste0(round(pct, 1), "%")), hjust = -0.1, size = 3.5) +
+  labs(x=NULL, y=NULL, title = "Factors Influencing Trust in Tools Available") +
+  theme_classic(base_size = 12) + 
+  theme(axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.line.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  scale_y_continuous(limits=c(0,80)) 
+
+tool_trust
+
+#ggsave("figures/Tool Trust.png", plot = tool_trust, width = 6, height = 4)
+
+```
+
+
+### Are respondents interested in using prompt-driven single-cell assistant?
+
+``` {r Q25}
+
+#Data tidy
+df_LLM <- df %>% select(how_interested_would_you_be_in_a_prompt_driven_single_cell_assistant) %>% as.data.frame() 
+df_LLM$how_interested_would_you_be_in_a_prompt_driven_single_cell_assistant <- gsub("Extremamente interessado", "Extremely interested",
+                                                                                    df_LLM$how_interested_would_you_be_in_a_prompt_driven_single_cell_assistant)
+df_LLM <- df_LLM %>% count(how_interested_would_you_be_in_a_prompt_driven_single_cell_assistant)
+colnames(df_LLM) <- c("Interest", "n")
+df_LLM$Interest <- as.factor(df_LLM$Interest)
+
+#Rearrange order of variables
+df_LLM <- df_LLM %>% arrange(desc(n))
+df_LLM$Interest <- factor(df_LLM$Interest, levels = c("Extremely interested", "Somewhat interested", "Neutral", "Somewhat not interested"))
+df_LLM <- df_LLM %>% arrange(desc(Interest))
+
+#Add percentages and labels
+df_LLM <- df_LLM %>% 
+  mutate(pct = (n/nrow(df) * 100)) %>% 
+  mutate(csum = rev(cumsum(rev(pct))), 
+         pos = n/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), n/2, pos)) 
+
+#Plot stacked bar chart
+LLM_interest <- ggplot(df_LLM, aes("", pct, fill = rev(Interest))) +
+  geom_bar(position = 'stack', stat = 'identity', width = 0.4) +
+  coord_flip() +
+  geom_label_repel(aes(y = pos, label = paste0(Interest, ": ", round(pct, 1), "%")),
+                   size = 4.5, nudge_x = c(-0.5, 0.3, -0.3, 0.3), show.legend = FALSE, color = c("white", "black", "black", "white"), segment.colour = "black") +
+  theme_void(base_size = 12) +
+  scale_fill_brewer(palette = "RdYlGn") +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5, vjust = -10)) +
+  labs(title = "81% respondents are interested in using  \n a prompt-based LLM single-cell assistant") 
+  
+LLM_interest
+
+#ggsave("figures/Interest in LLM.png", plot = LLM_interest, width = 5, height = 4)
+
+  
+```
+
